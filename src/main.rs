@@ -1,5 +1,7 @@
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::io;
+use std::thread;
+use std::io::{Read, Write};
 
 fn server() -> io::Result<()> {
     let addrs = [
@@ -9,12 +11,18 @@ fn server() -> io::Result<()> {
     let listener = TcpListener::bind(&addrs[..])?;
     println!("listening on {:?}", listener.local_addr()?);
     for stream in listener.incoming() {
+        thread::spawn(|| {
         match stream {
-            Ok(stream) => {
+            Ok(mut stream) => {
                 println!("new client: {:?}", stream);
+                stream.write(b"Hello World\r\n").unwrap();
+                let mut buf = [128; 0];
+                stream.read(&mut buf).unwrap();
+                println!("{:?} read {:?}", stream, buf);
             }
             Err(e) => println!("incoming error: {:?}", e)
         }
+        });
     };
     Ok(())
 }
