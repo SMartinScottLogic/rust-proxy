@@ -17,6 +17,11 @@ fn server() -> io::Result<()> {
                 println!("new client: {:?}", sockaddr);
                 thread::spawn(move || {
                     thread::sleep(time::Duration::from_secs(10));
+                    let mut buf = [1; 0];
+                    match stream.read_exact(&mut buf) {
+                        Ok(_) => println!("SOCKS version: {:?}", buf),
+                        Err(e) => {println!("error: {:?}", e); return;}
+                    }
                     stream.write(b"Hello World\r\n").unwrap();
                     let mut buf = [128; 0];
                     stream.read(&mut buf).unwrap();
