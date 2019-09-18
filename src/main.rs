@@ -1,7 +1,31 @@
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::io;
-use std::io::{Read, Write};
+use std::io::{Read, Write, BufReader, BufRead};
 use std::{thread, time};
+
+fn handle_connection(mut stream: TcpStream) -> io::Result<()> {
+                    let mut buf = [0; 1];
+                    let mut reader = BufReader::new(stream.try_clone()?);
+                    stream.peek(&mut buf)?;
+                    match buf[0] {
+                        4 => println!("SOCKS version: {:?}", buf),
+                        5 => println!("SOCKS version: {:?}", buf),
+                        _ => {
+                            let mut lines = String::new();
+                            reader.read_line(&mut lines)?;
+                            println!("Non-socks response: {}", lines);
+                            return Ok(());
+                        }
+                    }
+                    stream.read_exact(&mut buf)?;
+                    stream.write(b"Hello World\r\n")?;
+                    /*
+                    let mut buf = [0; 128];
+                    stream.read(&mut buf)?;
+                    println!("{:?} read {:?}", stream, buf);
+                    */
+                    Ok(())
+}
 
 fn server() -> io::Result<()> {
     let addrs = [
@@ -13,23 +37,17 @@ fn server() -> io::Result<()> {
     loop {
         match listener.accept() {
             Err(e) => println!("incoming error: {:?}", e),
-            Ok((mut stream, sockaddr)) => {
+            Ok((stream, sockaddr)) => {
                 println!("new client: {:?}", sockaddr);
                 thread::spawn(move || {
-                    thread::sleep(time::Duration::from_secs(10));
-                    let mut buf = [1; 0];
-                    match stream.read_exact(&mut buf) {
-                        Ok(_) => println!("SOCKS version: {:?}", buf),
-                        Err(e) => {println!("error: {:?}", e); return;}
+                    match handle_connection(stream) {
+                        Ok(_) => {},
+                        Err(e) => println!("Error: {}", e)
                     }
-                    stream.write(b"Hello World\r\n").unwrap();
-                    let mut buf = [128; 0];
-                    stream.read(&mut buf).unwrap();
-                    println!("{:?} read {:?}", stream, buf);
                 });
             }
         };
-    }
+    };
     Ok(())
 }
 
