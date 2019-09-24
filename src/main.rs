@@ -1,24 +1,52 @@
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::io;
-use std::io::{Read, Write, BufReader, BufRead};
+use std::io::{Read, Write, BufReader, BufRead, BufWriter};
 use std::{thread, time};
 
-fn handle_connection(mut stream: TcpStream) -> io::Result<()> {
+fn handle_socks4(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
+    Ok(())
+}
+
+fn handle_socks5(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
+    Ok(())
+}
+
+fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
+    let mut lines = Vec::new();
+    loop {
+        let mut buf = String::new();
+        reader.read_line(&mut buf)?;
+        if buf.trim().len() == 0 {
+            break;
+        }
+        println!("{} {}", buf.len(), buf);
+        lines.push(buf);
+    }
+
+    //let lines = reader.lines().filter_map(io::Result::ok).collect::<Vec<String>>();
+
+    println!("Non-socks response: {:?}", lines);
+    writer.write_fmt(format_args!("HTTP/1.1 200 Empty\r\n"))?;
+    writer.write_all(b"\r\n")?;
+    writer.write_all(b"Hello World\r\n")?;
+    writer.write_all(b"\r\n")?;
+    Ok(())
+}
+
+fn handle_connection(stream: TcpStream) -> io::Result<()> {
                     let mut buf = [0; 1];
-                    let mut reader = BufReader::new(stream.try_clone()?);
+                    let reader = BufReader::new(stream.try_clone()?);
+                    let writer = BufWriter::new(stream.try_clone()?);
                     stream.peek(&mut buf)?;
                     match buf[0] {
-                        4 => println!("SOCKS version: {:?}", buf),
-                        5 => println!("SOCKS version: {:?}", buf),
-                        _ => {
-                            let mut lines = String::new();
-                            reader.read_line(&mut lines)?;
-                            println!("Non-socks response: {}", lines);
-                            return Ok(());
-                        }
-                    }
+                        4 => handle_socks4(reader, writer),
+                        5 => handle_socks5(reader, writer),
+                        _ => handle_http(reader, writer)
+                    }?;
+                    /*
                     stream.read_exact(&mut buf)?;
                     stream.write(b"Hello World\r\n")?;
+                    */
                     /*
                     let mut buf = [0; 128];
                     stream.read(&mut buf)?;
