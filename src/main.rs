@@ -27,6 +27,7 @@ fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream
 
     println!("Non-socks response: {:?}", lines);
     writer.write_fmt(format_args!("HTTP/1.1 200 Empty\r\n"))?;
+    writer.write_all(b"Connection: close\r\n")?;
     writer.write_all(b"\r\n")?;
     writer.write_all(b"Hello World\r\n")?;
     writer.write_all(b"\r\n")?;
