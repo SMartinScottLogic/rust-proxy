@@ -12,6 +12,7 @@ fn handle_socks5(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStre
 }
 
 fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
+    /*
     let mut lines = Vec::new();
     loop {
         let mut buf = String::new();
@@ -26,6 +27,13 @@ fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream
     //let lines = reader.lines().filter_map(io::Result::ok).collect::<Vec<String>>();
 
     println!("Non-socks response: {:?}", lines);
+    */
+    let mut buf = String::new();
+    reader.read_line(&mut buf)?;
+    let request_components = buf.split(' ').collect::<Vec<_>>();
+    println!("bits: {:?}", request_components);
+    let method = request_components.get(0).map_or(Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request")), |v| Ok(v))?;
+    println!("  METHOD: {}", method);
     writer.write_fmt(format_args!("HTTP/1.1 200 Empty\r\n"))?;
     writer.write_all(b"Connection: close\r\n")?;
     writer.write_all(b"\r\n")?;
