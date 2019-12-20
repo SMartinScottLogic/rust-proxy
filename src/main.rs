@@ -2,6 +2,16 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::io;
 use std::io::{Read, Write, BufReader, BufRead, BufWriter};
 use std::{thread, time};
+use futures::{
+        // Extension trait for futures 0.1 futures, adding the `.compat()` method
+        // which allows us to use `.await` on 0.1 futures.
+        compat::Future01CompatExt,
+        // Extension traits providing additional methods on futures.
+        // `FutureExt` adds methods that work for all futures, whereas
+        // `TryFutureExt` adds methods to futures that return `Result` types.
+        future::{FutureExt, TryFutureExt},
+        executor::block_on,
+};
 
 fn handle_socks4(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
     Ok(())
@@ -12,6 +22,31 @@ fn handle_socks5(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStre
 }
 
 fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
+    let mut buf = String::new();
+    reader.read_line(&mut buf)?;
+    let request_components = buf.split(' ').collect::<Vec<_>>();
+    println!("bits: {:?}", request_components);
+    let method = request_components.get(0).map_or(Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request")), |v| Ok(v))?;
+    println!("  METHOD: {}", method);
+
+    let read = async {
+        let delay = time::Duration::from_millis(10);
+    loop {
+        let mut buf = [0; 1024];
+        let size = reader.read(&mut buf)?;
+        /*
+        if buf.trim().len() == 0 {
+            println!("END OF HEADERS");
+            //break;
+        }
+        */
+        if size > 0 {
+            hexdump(&buf, size);
+        }
+        thread::sleep(delay);
+    }
+    Ok::<(), io::Error>(())
+    };
     /*
     let mut lines = Vec::new();
     loop {
@@ -28,17 +63,19 @@ fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream
 
     println!("Non-socks response: {:?}", lines);
     */
-    let mut buf = String::new();
-    reader.read_line(&mut buf)?;
-    let request_components = buf.split(' ').collect::<Vec<_>>();
-    println!("bits: {:?}", request_components);
-    let method = request_components.get(0).map_or(Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request")), |v| Ok(v))?;
-    println!("  METHOD: {}", method);
-    writer.write_fmt(format_args!("HTTP/1.1 200 Empty\r\n"))?;
+
+    let delay = time::Duration::from_secs(2);
+    thread::sleep(delay);
+println!("Send response...");
+    writer.write_all(b"HTTP/1.1 200 Empty\r\n")?;
     writer.write_all(b"Connection: close\r\n")?;
     writer.write_all(b"\r\n")?;
     writer.write_all(b"Hello World\r\n")?;
     writer.write_all(b"\r\n")?;
+    writer.flush()?;
+println!("Sent");
+
+    block_on(read)?;
     Ok(())
 }
 
@@ -86,6 +123,27 @@ fn server() -> io::Result<()> {
         };
     };
     Ok(())
+}
+
+fn hexdump(buf: &[u8], size: usize) {
+    println!("size: {}", size);
+    let mut hex_line = String::new();
+    let mut ascii_line = String::new();
+    for b in buf {
+        if *b > 31 && *b < 127 {
+            ascii_line.push(*b as char);
+        } else {
+            ascii_line.push('.');
+        }
+        hex_line.push_str(format!("{:02x?} ", *b).as_str());
+
+        if ascii_line.len()==16 {
+            println!("{} {}", hex_line, ascii_line);
+            ascii_line = String::new();
+            hex_line = String::new();
+        }
+    }
+    println!("{} {}", hex_line, ascii_line);
 }
 
 fn main() {
