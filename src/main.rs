@@ -26,7 +26,7 @@ fn handle_socks5(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStre
 fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
     let mut buf = String::new();
     reader.read_line(&mut buf)?;
-    let mut request_components = buf.split(' ').collect::<Vec<_>>();
+    let mut request_components = buf.trim().split(' ').collect::<Vec<_>>();
     println!("bits: {:?}", request_components);
     let method = request_components.get(0).map_or(Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request")), |v| Ok(v))?;
     let url = request_components.get(1).map_or(Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request")), |v| Ok(v))?;
@@ -55,6 +55,7 @@ fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream
     println!("  PATH: {}", path);
     request_components[1] = &path;
     println!("bits: {:?}", request_components);
+    hexdump(request_components.join(" ").as_bytes());
     write!(outward, "{}", request_components.join(" "));
     println!("{}", request_components.join(" "));
     outward.write_all(b"\r\n");
@@ -70,7 +71,11 @@ fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream
             let size = outward.read(&mut buf)?;
             if size > 0 {
                 //hexdump(&buf[..size]);
-                println!("{}", str::from_utf8(&buf[..size]).unwrap_or("ERROR"));
+                let mut o = String::new();
+                for b in &buf[..size] {
+                    o.push(*b as char);
+                }
+                println!("{}", o);
             }
         }
         Ok::<(), io::Error>(())
