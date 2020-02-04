@@ -1,10 +1,11 @@
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::str;
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::io;
 use std::io::{Read, Write, BufReader, BufRead, BufWriter};
 use std::{thread, time};
 use futures::{
         // Extension trait for futures 0.1 futures, adding the `.compat()` method
-        // which allows us to use `.await` on 0.1 futures.
+       // which allows us to use `.await` on 0.1 futures.
         compat::Future01CompatExt,
         // Extension traits providing additional methods on futures.
         // `FutureExt` adds methods that work for all futures, whereas
@@ -12,6 +13,7 @@ use futures::{
         future::{FutureExt, TryFutureExt},
         executor::block_on,
 };
+use url::{Url, ParseError};
 
 fn handle_socks4(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
     Ok(())
@@ -24,15 +26,63 @@ fn handle_socks5(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStre
 fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
     let mut buf = String::new();
     reader.read_line(&mut buf)?;
-    let request_components = buf.split(' ').collect::<Vec<_>>();
+    let mut request_components = buf.split(' ').collect::<Vec<_>>();
     println!("bits: {:?}", request_components);
     let method = request_components.get(0).map_or(Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request")), |v| Ok(v))?;
+    let url = request_components.get(1).map_or(Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request")), |v| Ok(v))?;
+    let url = match Url::parse(url) {
+        Err(_) => Err(std::io::Error::new(std::io::ErrorKind::Other, "invalid request: ".to_owned() + url)),
+        Ok(v) => Ok(v)
+    }?;
+
     println!("  METHOD: {}", method);
+    println!("  URL: {:?}", url);
+    println!("  PATH: {:?}", url.path());
+    println!("  QUERY: {:?}", url.query());
+    println!("  HOST: {:?}", url.host_str().unwrap());
+    println!("  PORT: {:?}", url.port_or_known_default());
+    println!("  ORIGIN: {:?}", url.origin());
+    println!("  ORIGIN: {:?}", url.origin().unicode_serialization());
+    println!("  HOST: {:?}", url.host_str().unwrap().to_socket_addrs());
+    let hostport = format!("{}:{}", url.host_str().unwrap(), url.port_or_known_default().unwrap_or(80));
+    println!("  HOSTPORT: {} {:?}", hostport, hostport.to_socket_addrs());
+    let mut outward = TcpStream::connect(hostport)?;
+    println!("  OUTWARD: {:?}", outward);
+    let path = match url.query() {
+        Some(query) => format!("{}?{}", url.path(), query),
+        None => url.path().to_string()
+    };
+    println!("  PATH: {}", path);
+    request_components[1] = &path;
+    println!("bits: {:?}", request_components);
+    write!(outward, "{}", request_components.join(" "));
+    println!("{}", request_components.join(" "));
+    outward.write_all(b"\r\n");
+    write!(outward, "Host: {}", url.host_str().unwrap_or(""));
+    println!("Host: {}", url.host_str().unwrap_or(""));
+    outward.write_all(b"\r\n");
+    outward.write_all(b"\r\n");
+    outward.flush();
+    
+    let outward_read = async {
+        loop {
+            let mut buf = [0; 1000];
+            let size = outward.read(&mut buf)?;
+            if size > 0 {
+                //hexdump(&buf[..size]);
+                println!("{}", str::from_utf8(&buf[..size]).unwrap_or("ERROR"));
+            }
+        }
+        Ok::<(), io::Error>(())
+    };
+
+    block_on(outward_read)?;
 
     let read = async {
         let delay = time::Duration::from_millis(10);
+        let mut all = Vec::new();
     loop {
-        let mut buf = [0; 1024];
+        let mut buf = [0; 11];
         let size = reader.read(&mut buf)?;
         /*
         if buf.trim().len() == 0 {
@@ -41,7 +91,9 @@ fn handle_http(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream
         }
         */
         if size > 0 {
-            hexdump(&buf, size);
+            hexdump(&buf[..size]);
+            all.extend_from_slice(&buf[..size]);
+            hexdump(&all);
         }
         thread::sleep(delay);
     }
@@ -125,8 +177,8 @@ fn server() -> io::Result<()> {
     Ok(())
 }
 
-fn hexdump(buf: &[u8], size: usize) {
-    println!("size: {}", size);
+fn hexdump(buf: &[u8]) {
+    println!("size: {}", buf.len());
     let mut hex_line = String::new();
     let mut ascii_line = String::new();
     for b in buf {
@@ -137,7 +189,7 @@ fn hexdump(buf: &[u8], size: usize) {
         }
         hex_line.push_str(format!("{:02x?} ", *b).as_str());
 
-        if ascii_line.len()==16 {
+        if ascii_line.len()==32 {
             println!("{} {}", hex_line, ascii_line);
             ascii_line = String::new();
             hex_line = String::new();
