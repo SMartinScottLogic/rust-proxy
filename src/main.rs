@@ -15,6 +15,24 @@ use futures::{
 };
 use url::{Url, ParseError};
 
+mod transfer;
+use transfer::Transfer;
+
+struct DirectTransfer {
+    source: BufReader<TcpStream>,
+    target: BufWriter<TcpStream>
+}
+
+impl DirectTransfer {
+    fn new(source: BufReader<TcpStream>, target: BufWriter<TcpStream>) -> DirectTransfer {
+        DirectTransfer { source, target }
+    }
+}
+
+impl Transfer for DirectTransfer {
+    fn run(&self) {}
+}
+
 fn handle_socks4(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) -> io::Result<()> {
     Ok(())
 }
@@ -133,6 +151,15 @@ println!("Send response...");
 println!("Sent");
 
     block_on(read)?;
+
+    let outward_reader = BufReader::new(outward.try_clone()?);
+    let outward_writer = BufWriter::new(outward.try_clone()?);
+
+    let transfer_out = DirectTransfer::new(reader, outward_writer);
+    let transfer_in = DirectTransfer::new(outward_reader, writer);
+
+    transfer_out.run();
+    transfer_in.run();
     Ok(())
 }
 
