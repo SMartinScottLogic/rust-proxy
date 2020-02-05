@@ -6,7 +6,8 @@ use futures::{
     // Extension traits providing additional methods on futures.
     // `FutureExt` adds methods that work for all futures, whereas
     // `TryFutureExt` adds methods to futures that return `Result` types.
-    future::{FutureExt, TryFutureExt},
+    future::{BoxFuture, FutureExt, FutureObj, TryFutureExt},
+    join, future
 };
 use std::io;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
@@ -30,7 +31,9 @@ impl DirectTransfer {
 }
 
 impl Transfer for DirectTransfer {
-    fn run(&self) {}
+    fn run(&self) -> BoxFuture<u64> {
+        future::ready(0 as u64).boxed()
+    }
 }
 
 fn handle_socks4(
@@ -185,8 +188,10 @@ fn handle_http(
     let transfer_out = DirectTransfer::new(reader, outward_writer);
     let transfer_in = DirectTransfer::new(outward_reader, writer);
 
-    transfer_out.run();
-    transfer_in.run();
+    let j = async {
+        join!(transfer_in.run(), transfer_out.run())
+    };
+    block_on(j);
     Ok(())
 }
 
